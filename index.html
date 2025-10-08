@@ -1,0 +1,132 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>World Clock & Time Zone Converter</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <header class="site-header">
+    <div class="container header-row">
+      <div class="left">
+        <h1>World Clock & Time Converter</h1>
+        <p class="subtitle">Live clocks, DST-aware converter, analog + digital, minute-precise slider.</p>
+      </div>
+
+      <div class="right header-controls">
+        <div class="local-clock" id="local-clock">—</div>
+        <div class="toggles">
+          <label class="switch">
+            <input id="global-style-toggle" type="checkbox" />
+            <span class="slider-switch" title="Toggle all clocks analog/digital">All Analog</span>
+          </label>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <main class="container main-grid">
+    <!-- Live clocks panel -->
+    <section class="panel clocks-panel">
+      <div class="panel-header">
+        <h2>Live Clocks</h2>
+        <div class="controls">
+          <input id="tz-search" type="search" placeholder="Search timezone (e.g. New_York)" />
+          <select id="tz-picker" class="tz-picker" aria-label="Timezone picker"></select>
+          <button id="add-tz">Add</button>
+          <button id="add-local" title="Add my local timezone">+ Mine</button>
+        </div>
+      </div>
+
+      <div id="clocks" class="clocks-grid" aria-live="polite">
+        <!-- dynamic clock cards -->
+      </div>
+    </section>
+
+    <!-- Converter & slider panel -->
+    <section class="panel converter-panel">
+      <div class="panel-header">
+        <h2>Time Zone Converter</h2>
+      </div>
+
+      <form id="converter" class="converter-form" onsubmit="return false;">
+        <div class="row">
+          <label>
+            From (zone)
+            <select id="from-tz" class="tz-select"></select>
+          </label>
+
+          <label>
+            Date
+            <input id="from-date" type="date" />
+          </label>
+
+          <label>
+            Time
+            <input id="from-time" type="time" step="60" />
+          </label>
+        </div>
+
+        <div class="row">
+          <label>
+            To (zone)
+            <select id="to-tz" class="tz-select"></select>
+          </label>
+
+          <label>
+            Converted date/time
+            <output id="result" class="result-output">—</output>
+          </label>
+
+          <div class="convert-actions">
+            <button id="convert">Convert</button>
+            <button id="swap" title="Swap timezones">Swap</button>
+            <button id="now" title="Use current time">Use Now</button>
+          </div>
+        </div>
+      </form>
+
+      <hr />
+
+      <div class="slider-panel">
+        <h3>Interactive Minute Slider</h3>
+        <p class="muted">Drag the slider to pick a time in the <strong>From</strong> zone — the <strong>To</strong> zone updates instantly (minutes precision).</p>
+
+        <div class="slider-row">
+          <div class="slider-info">
+            <div><strong>From:</strong> <span id="slider-from-display">—</span></div>
+            <div><strong>To:</strong> <span id="slider-to-display">—</span></div>
+          </div>
+
+          <input id="time-slider" type="range" min="0" max="1439" step="1" />
+        </div>
+
+        <div class="slider-actions">
+          <button id="slider-now">Set slider to Now</button>
+          <button id="slider-sync">Sync From Inputs</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- Examples & extras -->
+    <section class="panel examples-panel">
+      <div class="panel-header">
+        <h2>Quick Examples & Tips</h2>
+      </div>
+      <div class="examples">
+        <p>Try: <kbd>Asia/Seoul</kbd> &rarr; <kbd>America/Chicago</kbd>. Use the slider for minute-precise conversions and watch day changes (it will say "previous day" or "next day" if applicable).</p>
+        <p>Toggle each clock's analog/digital icon or use the global switch in the header to change everyone at once. Preferences are saved locally.</p>
+      </div>
+    </section>
+  </main>
+
+  <footer class="site-footer">
+    <div class="container">
+      <small>Made for GitHub Pages • No external libraries • Works offline once loaded</small>
+    </div>
+  </footer>
+
+  <script src="script.js" defer></script>
+</body>
+</html>
