@@ -266,13 +266,16 @@ function updateClockTimes() {
 function drawAnalogClock(canvas, instant, tz) {
   const ctx = canvas.getContext('2d');
   const DPR = window.devicePixelRatio || 1;
-  const size = Math.min(canvas.width, canvas.height);
+  const size = canvas.clientWidth; // Use clientWidth for stable size
   const r = size / 2;
-  // scale for DPR
-  canvas.width = size * DPR;
-  canvas.height = size * DPR;
-  canvas.style.width = (size/2) + 'px';
-  canvas.style.height = (size/2) + 'px';
+
+  // Set actual canvas drawing surface size based on DPR
+  if (canvas.width !== size * DPR) {
+    canvas.width = size * DPR;
+    canvas.height = size * DPR;
+  }
+
+  // Scale context for high-DPI rendering
   ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
   ctx.clearRect(0,0,size,size);
   ctx.translate(r, r);
