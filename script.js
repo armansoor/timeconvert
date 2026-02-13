@@ -17,6 +17,8 @@ const nowBtn = document.getElementById('now');
 const resultOutput = document.getElementById('result');
 
 const globalToggle = document.getElementById('global-style-toggle');
+const formatToggle = document.getElementById('format-toggle');
+const themeToggle = document.getElementById('theme-toggle');
 const localClockEl = document.getElementById('local-clock');
 
 const slider = document.getElementById('time-slider');
@@ -28,9 +30,22 @@ const sliderSyncBtn = document.getElementById('slider-sync');
 let watchedZones = [];
 const allTimeZones = getAllTimeZones();
 let perClockStyle = {}; // { tzId: 'analog'|'digital' }
+let is12h = false;
+let isLight = false;
 const STORAGE_KEY = 'watchedZones_v2';
 const STYLE_KEY = 'clockStyles_v2';
 const GLOBAL_STYLE_KEY = 'globalStyle_v2';
+const FORMAT_KEY = 'is12h_v1';
+const THEME_KEY = 'theme_v1';
+
+const ICONS = {
+  trash: '<svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>',
+  target: '<svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><circle cx="12" cy="12" r="6"></circle><circle cx="12" cy="12" r="2"></circle></svg>',
+  clock: '<svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>',
+  digit: '<svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="16" height="16" rx="2" ry="2"></rect><line x1="8" y1="12" x2="16" y2="12"></line></svg>',
+  sun: '<svg viewBox="0 0 24 24" width="20" height="20" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="5"></circle><line x1="12" y1="1" x2="12" y2="3"></line><line x1="12" y1="21" x2="12" y2="23"></line><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line><line x1="1" y1="12" x2="3" y2="12"></line><line x1="21" y1="12" x2="23" y2="12"></line><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line></svg>',
+  moon: '<svg viewBox="0 0 24 24" width="20" height="20" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path></svg>'
+};
 
 // --- timezone utilities (same robust approach) ---
 function getAllTimeZones() {
@@ -52,7 +67,7 @@ function getAllTimeZones() {
 function formatForTimeZone(date, timeZone, opts = {}) {
   const df = new Intl.DateTimeFormat(undefined, Object.assign({
     timeZone,
-    hour12: false,
+    hour12: is12h,
     weekday: 'short',
     year: 'numeric',
     month: 'short',
@@ -129,10 +144,20 @@ function populateSearchablePicker() {
 
 // --- initialization & persistence ---
 function loadState() {
-  try {
-    const stored = localStorage.getItem(STORAGE_KEY);
-    if (stored) watchedZones = JSON.parse(stored);
-  } catch(e){ watchedZones = []; }
+  // Check hash first for shared URLs
+  if (window.location.hash.length > 1) {
+    try {
+      const zones = window.location.hash.slice(1).split(',');
+      // Validate zones to prevent XSS or errors
+      const valid = zones.filter(z => allTimeZones.includes(z));
+      if (valid.length > 0) watchedZones = valid;
+    } catch (e) { console.error('Error parsing hash', e); }
+  } else {
+    try {
+      const stored = localStorage.getItem(STORAGE_KEY);
+      if (stored) watchedZones = JSON.parse(stored);
+    } catch(e){ watchedZones = []; }
+  }
 
   try {
     const s = localStorage.getItem(STYLE_KEY);
@@ -141,12 +166,43 @@ function loadState() {
 
   const g = localStorage.getItem(GLOBAL_STYLE_KEY);
   if (g) globalToggle.checked = g === 'analog';
+
+  const f = localStorage.getItem(FORMAT_KEY);
+  if (f) {
+    is12h = (f === 'true');
+    formatToggle.checked = is12h;
+  }
+
+  const t = localStorage.getItem(THEME_KEY);
+  if (t === 'light') isLight = true;
+  applyTheme();
 }
 
 function saveState() {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(watchedZones));
   localStorage.setItem(STYLE_KEY, JSON.stringify(perClockStyle));
   localStorage.setItem(GLOBAL_STYLE_KEY, globalToggle.checked ? 'analog' : 'digital');
+  localStorage.setItem(FORMAT_KEY, is12h);
+  localStorage.setItem(THEME_KEY, isLight ? 'light' : 'dark');
+
+  // Update URL hash
+  if (watchedZones.length > 0) {
+    history.replaceState(null, null, '#' + watchedZones.join(','));
+  } else {
+    history.replaceState(null, null, ' ');
+  }
+}
+
+function applyTheme() {
+  if (isLight) {
+    document.documentElement.setAttribute('data-theme', 'light');
+    themeToggle.innerHTML = ICONS.moon;
+    themeToggle.title = 'Switch to Dark Mode';
+  } else {
+    document.documentElement.removeAttribute('data-theme');
+    themeToggle.innerHTML = ICONS.sun;
+    themeToggle.title = 'Switch to Light Mode';
+  }
 }
 
 function init() {
@@ -169,6 +225,58 @@ function init() {
   setInterval(updateLocalClock, 1000);
 }
 
+// --- Drag and Drop ---
+let dragSrcTz = null;
+
+function handleDragStart(e) {
+  dragSrcTz = this.dataset.tz;
+  e.dataTransfer.effectAllowed = 'move';
+  e.dataTransfer.setData('text/plain', dragSrcTz);
+  this.classList.add('dragging');
+}
+
+function handleDragOver(e) {
+  if (e.preventDefault) e.preventDefault();
+  e.dataTransfer.dropEffect = 'move';
+  return false;
+}
+
+function handleDragEnter(e) {
+  this.classList.add('drag-over');
+}
+
+function handleDragLeave(e) {
+  this.classList.remove('drag-over');
+}
+
+function handleDrop(e) {
+  if (e.stopPropagation) e.stopPropagation();
+  this.classList.remove('drag-over');
+
+  const srcTz = dragSrcTz;
+  const targetTz = this.dataset.tz;
+
+  if (srcTz && srcTz !== targetTz) {
+    const srcIdx = watchedZones.indexOf(srcTz);
+    if (srcIdx > -1) {
+      watchedZones.splice(srcIdx, 1);
+      // Find new index of target after removal
+      const newTgtIdx = watchedZones.indexOf(targetTz);
+      if (newTgtIdx > -1) {
+        watchedZones.splice(newTgtIdx, 0, srcTz);
+        saveState();
+        renderClocks();
+      }
+    }
+  }
+  return false;
+}
+
+function handleDragEnd(e) {
+  this.classList.remove('dragging');
+  document.querySelectorAll('.clock-card').forEach(c => c.classList.remove('drag-over'));
+}
+
 // --- clocks rendering and update ---
 function renderClocks() {
   clocksContainer.innerHTML = '';
@@ -181,9 +289,19 @@ function renderClocks() {
     const title = document.createElement('div'); title.className = 'card-title'; title.textContent = tz;
     const actions = document.createElement('div'); actions.className = 'card-actions';
 
+    // Drag and drop attributes
+    card.setAttribute('draggable', 'true');
+    card.addEventListener('dragstart', handleDragStart);
+    card.addEventListener('dragover', handleDragOver);
+    card.addEventListener('dragenter', handleDragEnter);
+    card.addEventListener('dragleave', handleDragLeave);
+    card.addEventListener('drop', handleDrop);
+    card.addEventListener('dragend', handleDragEnd);
+
     const styleBtn = document.createElement('button');
-    styleBtn.textContent = perClockStyle[tz] === 'analog' ? 'Analog' : 'Digital';
-    styleBtn.title = 'Toggle this clock view';
+    const isAnalog = perClockStyle[tz] === 'analog';
+    styleBtn.innerHTML = isAnalog ? ICONS.digit : ICONS.clock;
+    styleBtn.title = isAnalog ? 'Switch to Digital' : 'Switch to Analog';
     styleBtn.addEventListener('click', () => {
       perClockStyle[tz] = perClockStyle[tz] === 'analog' ? 'digital' : 'analog';
       saveState();
@@ -191,7 +309,8 @@ function renderClocks() {
     });
 
     const removeBtn = document.createElement('button');
-    removeBtn.textContent = 'Remove';
+    removeBtn.innerHTML = ICONS.trash;
+    removeBtn.title = 'Remove';
     removeBtn.addEventListener('click', () => {
       watchedZones = watchedZones.filter(z => z !== tz);
       saveState();
@@ -199,8 +318,12 @@ function renderClocks() {
     });
 
     const setFromBtn = document.createElement('button');
-    setFromBtn.textContent = 'Use as From';
-    setFromBtn.addEventListener('click', () => { fromTz.value = tz; });
+    setFromBtn.innerHTML = ICONS.target;
+    setFromBtn.title = 'Use as From Zone';
+    setFromBtn.addEventListener('click', () => {
+      fromTz.value = tz;
+      fromTz.dispatchEvent(new Event('change'));
+    });
 
     actions.appendChild(setFromBtn);
     actions.appendChild(styleBtn);
@@ -213,16 +336,18 @@ function renderClocks() {
     const timeEl = document.createElement('div'); timeEl.className = 'time-large';
     timeEl.setAttribute('aria-live','polite');
     const sub = document.createElement('div'); sub.className = 'tz-name';
+    const diffEl = document.createElement('div'); diffEl.className = 'time-diff'; // difference display
 
     // analog canvas
     const canvas = document.createElement('canvas');
     canvas.className = 'clock-canvas';
     canvas.width = 180; canvas.height = 180; // high-dpi drawing scaled via CSS
-    canvas.style.width = '90px'; canvas.style.height = '90px';
+    canvas.style.width = '80px'; canvas.style.height = '80px';
 
     center.appendChild(canvas);
     center.appendChild(timeEl);
     center.appendChild(sub);
+    center.appendChild(diffEl);
 
     card.appendChild(top);
     card.appendChild(center);
@@ -235,21 +360,35 @@ function renderClocks() {
 // update clock times (digital text and draw analog if selected)
 function updateClockTimes() {
   const now = new Date();
+  const localTZ = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
+  const localOffset = getOffsetMinutes(now, localTZ);
+
   document.querySelectorAll('.clock-card').forEach(card => {
     const tz = card.dataset.tz;
     const timeEl = card.querySelector('.time-large');
     const sub = card.querySelector('.tz-name');
+    const diffEl = card.querySelector('.time-diff');
     const canvas = card.querySelector('canvas');
 
-    const dfTime = new Intl.DateTimeFormat(undefined, { timeZone: tz, hour12: false, hour:'2-digit', minute:'2-digit', second:'2-digit' });
+    const dfTime = new Intl.DateTimeFormat(undefined, { timeZone: tz, hour12: is12h, hour:'2-digit', minute:'2-digit', second:'2-digit' });
     const dfDate = new Intl.DateTimeFormat(undefined, { timeZone: tz, weekday:'short', year:'numeric', month:'short', day:'2-digit' });
     timeEl.textContent = dfTime.format(now);
     sub.textContent = dfDate.format(now);
 
+    // Time diff
+    const targetOffset = getOffsetMinutes(now, tz);
+    const diff = targetOffset - localOffset;
+    const diffH = Math.floor(diff / 60);
+    const diffM = Math.abs(diff % 60);
+    let diffStr = '';
+    if (diff === 0) diffStr = 'Same time';
+    else {
+      const sign = diff > 0 ? '+' : '-';
+      diffStr = `${sign}${Math.abs(diffH)}h${diffM > 0 ? diffM + 'm' : ''}`;
+    }
+    if (diffEl) diffEl.textContent = diffStr;
+
     const style = globalToggle.checked ? 'analog' : (perClockStyle[tz] || 'digital');
-    // update style button label in card actions (keep UI consistent)
-    const styleBtn = Array.from(card.querySelectorAll('.card-actions button')).find(b => b.title === 'Toggle this clock view' || b.textContent==='Analog' || b.textContent==='Digital');
-    if (styleBtn) styleBtn.textContent = style === 'analog' ? 'Analog' : 'Digital';
 
     if (style === 'analog' && canvas) {
       drawAnalogClock(canvas, now, tz);
@@ -286,9 +425,16 @@ function drawAnalogClock(canvas, instant, tz) {
   const min = Number(p.minute);
   const sec = Number(p.second);
 
+  // Get colors from CSS
+  const style = getComputedStyle(document.body);
+  const colorText = style.getPropertyValue('--text').trim();
+  const colorAccent = style.getPropertyValue('--accent').trim();
+  const colorMuted = style.getPropertyValue('--muted').trim();
+  const colorGlass = style.getPropertyValue('--glass').trim();
+
   // face
   ctx.beginPath();
-  ctx.fillStyle = 'rgba(255,255,255,0.02)';
+  ctx.fillStyle = colorGlass;
   ctx.arc(0,0,r-2,0,Math.PI*2);
   ctx.fill();
 
@@ -297,35 +443,38 @@ function drawAnalogClock(canvas, instant, tz) {
     const ang = (i/60)*Math.PI*2;
     const len = (i%5===0) ? r*0.12 : r*0.06;
     ctx.beginPath();
-    ctx.strokeStyle = 'rgba(255,255,255,0.08)';
+    ctx.strokeStyle = i%5===0 ? colorText : colorMuted;
+    ctx.globalAlpha = i%5===0 ? 0.8 : 0.4;
     ctx.lineWidth = (i%5===0)?2:1;
     ctx.moveTo(Math.cos(ang)*(r-8), Math.sin(ang)*(r-8));
     ctx.lineTo(Math.cos(ang)*(r-8-len), Math.sin(ang)*(r-8-len));
     ctx.stroke();
   }
+  ctx.globalAlpha = 1;
 
   // hour hand
   const hourAng = ((hr + min/60) / 12) * Math.PI*2 - Math.PI/2;
   ctx.beginPath(); ctx.lineCap='round';
-  ctx.strokeStyle = 'rgba(255,255,255,0.9)'; ctx.lineWidth = r*0.08;
+  ctx.strokeStyle = colorText; ctx.lineWidth = r*0.08;
   ctx.moveTo(0,0); ctx.lineTo(Math.cos(hourAng)*(r*0.5), Math.sin(hourAng)*(r*0.5)); ctx.stroke();
 
   // minute hand
   const minAng = ((min + sec/60)/60)*Math.PI*2 - Math.PI/2;
   ctx.beginPath(); ctx.lineWidth = r*0.06;
+  ctx.strokeStyle = colorText;
   ctx.moveTo(0,0); ctx.lineTo(Math.cos(minAng)*(r*0.74), Math.sin(minAng)*(r*0.74)); ctx.stroke();
 
   // second hand
   const secAng = (sec/60)*Math.PI*2 - Math.PI/2;
-  ctx.beginPath(); ctx.lineWidth = 1.5;
-  ctx.strokeStyle = 'rgba(123,211,137,0.95)';
+  ctx.beginPath(); ctx.lineWidth = 2;
+  ctx.strokeStyle = colorAccent;
   ctx.moveTo(Math.cos(secAng)*-r*0.15, Math.sin(secAng)*-r*0.15);
   ctx.lineTo(Math.cos(secAng)*(r*0.82), Math.sin(secAng)*(r*0.82));
   ctx.stroke();
 
   // center dot
   ctx.beginPath();
-  ctx.fillStyle = 'rgba(255,255,255,0.9)';
+  ctx.fillStyle = colorText;
   ctx.arc(0,0, r*0.04,0,Math.PI*2); ctx.fill();
 
   // reset transform
@@ -467,6 +616,20 @@ setInterval(()=>{
 
 // global style toggle
 globalToggle.addEventListener('change', () => {
+  saveState();
+  renderClocks();
+});
+
+formatToggle.addEventListener('change', () => {
+  is12h = formatToggle.checked;
+  saveState();
+  updateClockTimes();
+  updateLocalClock();
+});
+
+themeToggle.addEventListener('click', () => {
+  isLight = !isLight;
+  applyTheme();
   saveState();
   renderClocks();
 });
