@@ -15,6 +15,9 @@ const convertBtn = document.getElementById('convert');
 const swapBtn = document.getElementById('swap');
 const nowBtn = document.getElementById('now');
 const resultOutput = document.getElementById('result');
+const calExportDiv = document.getElementById('calendar-export');
+const btnGoogle = document.getElementById('btn-google');
+const btnIcs = document.getElementById('btn-ics');
 
 const globalToggle = document.getElementById('global-style-toggle');
 const formatToggle = document.getElementById('format-toggle');
@@ -30,6 +33,7 @@ const sliderSyncBtn = document.getElementById('slider-sync');
 let watchedZones = [];
 const allTimeZones = getAllTimeZones();
 let perClockStyle = {}; // { tzId: 'analog'|'digital' }
+let customLabels = {}; // { tzId: 'My Label' }
 let is12h = false;
 let isLight = false;
 const STORAGE_KEY = 'watchedZones_v2';
@@ -37,6 +41,7 @@ const STYLE_KEY = 'clockStyles_v2';
 const GLOBAL_STYLE_KEY = 'globalStyle_v2';
 const FORMAT_KEY = 'is12h_v1';
 const THEME_KEY = 'theme_v1';
+const LABELS_KEY = 'customLabels_v1';
 
 const ICONS = {
   trash: '<svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>',
@@ -164,6 +169,11 @@ function loadState() {
     if (s) perClockStyle = JSON.parse(s);
   } catch(e){ perClockStyle = {}; }
 
+  try {
+    const l = localStorage.getItem(LABELS_KEY);
+    if (l) customLabels = JSON.parse(l);
+  } catch(e){ customLabels = {}; }
+
   const g = localStorage.getItem(GLOBAL_STYLE_KEY);
   if (g) globalToggle.checked = g === 'analog';
 
@@ -181,6 +191,7 @@ function loadState() {
 function saveState() {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(watchedZones));
   localStorage.setItem(STYLE_KEY, JSON.stringify(perClockStyle));
+  localStorage.setItem(LABELS_KEY, JSON.stringify(customLabels));
   localStorage.setItem(GLOBAL_STYLE_KEY, globalToggle.checked ? 'analog' : 'digital');
   localStorage.setItem(FORMAT_KEY, is12h);
   localStorage.setItem(THEME_KEY, isLight ? 'light' : 'dark');
@@ -286,7 +297,30 @@ function renderClocks() {
     card.dataset.tz = tz;
 
     const top = document.createElement('div'); top.className = 'card-top';
-    const title = document.createElement('div'); title.className = 'card-title'; title.textContent = tz;
+
+    const titleRow = document.createElement('div'); titleRow.className = 'card-title-row';
+    const indicator = document.createElement('div'); indicator.className = 'business-indicator';
+    indicator.title = 'Business Hours (Mon-Fri 9am-5pm)';
+    const title = document.createElement('div'); title.className = 'card-title';
+    title.textContent = customLabels[tz] || tz;
+    title.title = 'Click to rename';
+    title.addEventListener('click', (e) => {
+      e.stopPropagation(); // prevent drag start if any
+      const newName = prompt('Rename this clock (leave empty to reset):', customLabels[tz] || tz);
+      if (newName !== null) {
+        if (newName.trim() === '' || newName.trim() === tz) {
+          delete customLabels[tz];
+        } else {
+          customLabels[tz] = newName.trim();
+        }
+        saveState();
+        renderClocks();
+      }
+    });
+
+    titleRow.appendChild(indicator);
+    titleRow.appendChild(title);
+
     const actions = document.createElement('div'); actions.className = 'card-actions';
 
     // Drag and drop attributes
@@ -329,7 +363,7 @@ function renderClocks() {
     actions.appendChild(styleBtn);
     actions.appendChild(removeBtn);
 
-    top.appendChild(title);
+    top.appendChild(titleRow);
     top.appendChild(actions);
 
     const center = document.createElement('div'); center.className = 'card-center';
@@ -374,6 +408,19 @@ function updateClockTimes() {
     const dfDate = new Intl.DateTimeFormat(undefined, { timeZone: tz, weekday:'short', year:'numeric', month:'short', day:'2-digit' });
     timeEl.textContent = dfTime.format(now);
     sub.textContent = dfDate.format(now);
+
+    // Business Hours Logic (Mon-Fri, 09:00 - 17:00)
+    const busFmt = new Intl.DateTimeFormat('en-US', { timeZone: tz, hour12: false, weekday: 'short', hour: 'numeric' });
+    const busParts = busFmt.formatToParts(now);
+    const busDay = busParts.find(p => p.type === 'weekday').value;
+    const busHour = parseInt(busParts.find(p => p.type === 'hour').value, 10);
+    const isWeekend = (busDay === 'Sat' || busDay === 'Sun');
+    // hour 17 means 5pm. Typically 9-5 means up to 17:00 exclusive.
+    if (!isWeekend && busHour >= 9 && busHour < 17) {
+      card.classList.add('business-active');
+    } else {
+      card.classList.remove('business-active');
+    }
 
     // Time diff
     const targetOffset = getOffsetMinutes(now, tz);
@@ -489,6 +536,8 @@ function updateLocalClock() {
 }
 
 // --- Converter events ---
+let lastConversionResult = null;
+
 convertBtn.addEventListener('click', () => {
   try {
     const src = fromTz.value;
@@ -501,10 +550,60 @@ convertBtn.addEventListener('click', () => {
     // display target local parts (date may differ)
     const parts = localParts(conv.date, tgt);
     resultOutput.textContent = `${parts.year}-${parts.month}-${parts.day} ${parts.hour}:${parts.minute} (${tgt})`;
+
+    // Store result for calendar export
+    lastConversionResult = { date: conv.date, targetTz: tgt, sourceTz: src };
+    calExportDiv.style.display = 'flex';
   } catch (err) {
     console.error(err);
     resultOutput.textContent = 'Conversion failed — see console.';
+    calExportDiv.style.display = 'none';
   }
+});
+
+btnGoogle.addEventListener('click', (e) => {
+  e.preventDefault();
+  if (!lastConversionResult) return;
+  const { date, targetTz, sourceTz } = lastConversionResult;
+  // Google Calendar uses UTC "Z" format
+  const start = date.toISOString().replace(/[-:.]/g, '').slice(0, 15) + 'Z';
+  const end = new Date(date.getTime() + 60*60*1000).toISOString().replace(/[-:.]/g, '').slice(0, 15) + 'Z';
+  const text = `Meeting (${targetTz})`;
+  const details = `Time converted from ${sourceTz} to ${targetTz}`;
+  const url = `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${encodeURIComponent(text)}&dates=${start}/${end}&details=${encodeURIComponent(details)}&location=${encodeURIComponent(targetTz)}`;
+  window.open(url, '_blank');
+});
+
+btnIcs.addEventListener('click', (e) => {
+  e.preventDefault();
+  if (!lastConversionResult) return;
+  const { date, targetTz, sourceTz } = lastConversionResult;
+  const start = date.toISOString().replace(/[-:.]/g, '').slice(0, 15) + 'Z';
+  const end = new Date(date.getTime() + 60*60*1000).toISOString().replace(/[-:.]/g, '').slice(0, 15) + 'Z';
+  const now = new Date().toISOString().replace(/[-:.]/g, '').slice(0, 15) + 'Z';
+  const icsContent = [
+    'BEGIN:VCALENDAR',
+    'VERSION:2.0',
+    'PRODID:-//WorldClock//EN',
+    'BEGIN:VEVENT',
+    `UID:${Date.now()}@worldclock`,
+    `DTSTAMP:${now}`,
+    `DTSTART:${start}`,
+    `DTEND:${end}`,
+    `SUMMARY:Meeting (${targetTz})`,
+    `DESCRIPTION:Time converted from ${sourceTz} to ${targetTz}`,
+    `LOCATION:${targetTz}`,
+    'END:VEVENT',
+    'END:VCALENDAR'
+  ].join('\r\n');
+
+  const blob = new Blob([icsContent], { type: 'text/calendar;charset=utf-8' });
+  const link = document.createElement('a');
+  link.href = URL.createObjectURL(blob);
+  link.download = 'event.ics';
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
 });
 
 swapBtn.addEventListener('click', (e) => { e.preventDefault(); const a = fromTz.value; fromTz.value = toTz.value; toTz.value = a; });
